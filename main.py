@@ -1,5 +1,4 @@
-import aiohttp
-from bs4 import BeautifulSoup
+import requests
 from fastapi import FastAPI
 
 from ProductDetails import Product
@@ -15,6 +14,7 @@ async def root():
 @app.get("/hello/{name}")
 async def say_hello(name: str):
     return {"message": f"Hello {name}"}
+
 
 async def getAmazonProductRatingStar(product_section):
     rating_star = product_section.find("span", class_="a-icon-alt")
@@ -72,45 +72,92 @@ async def getAmazonProductPrice(product_section):
     return price
 
 
+from bs4 import BeautifulSoup
 
-
-@app.get("/v1/amazon{search_query}")
+@app.get("/v1/amazon/{search_query}")
 async def say_hello(search_query: str):
     products = []
     links_list = []
     url = f"https://www.amazon.in/s?k={search_query}"
-    async with aiohttp.ClientSession() as session:
-        while not links_list:
-            async with session.get(url) as response:
-                soup = BeautifulSoup(await response.text(), "lxml")
-                links = soup.find_all("a", class_="a-link-normal s-no-outline")
-                links_list = [link.get("href") for link in links]
+    while not links_list:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, "lxml")
+        links = soup.find_all("a", class_="a-link-normal s-no-outline")
+        links_list = [link.get("href") for link in links]
 
-        for link in links_list:
-            url = f"https://www.amazon.in{link}"
-            while True:
-                async with session.get(url) as response:
-                    soup = BeautifulSoup(await response.text(), "lxml")
-                    all_product_section = soup.find("div", id="dp-container")
-                    if all_product_section:
-                        center_product_section = all_product_section.find("div", class_="centerColAlign")
-                        right_product_section = all_product_section.find("div", id="rightCol")
-                        left_product_section = all_product_section.find("div", id="leftCol")
-                        name = await getAmazonProductTitleName(center_product_section)
-                        price = await getAmazonProductPrice(center_product_section)
-                        rating_star = await getAmazonProductRatingStar(center_product_section)
-                        rating_count = await getAmazonProductRatingCount(center_product_section)
-                        description = await getAmazonProductDescription(center_product_section)
-                        exchange_offer = await getAmazonProductExchangeAmount(right_product_section)
-                        image = left_product_section.find("ul",
-                                                          class_="a-unordered-list a-nostyle a-button-list a-vertical a-spacing-top-extra-large regularAltImageViewLayout")
-                        images = [n.get('src') for li in image.findAll("span", class_="a-button-inner") for n in
-                                  li.find_all('img') if n.get('src') is not None] if image else []
-                        product = Product(name=name, description=description, ratingStar=rating_star,
-                                          ratingCount=rating_count, price=price, exchange=exchange_offer, image=images,
-                                          link=link)
-                        products.append(product)
-                        break
+    for link in links_list:
+        url = f"https://www.amazon.in{link}"
+        while True:
+            response = requests.get(url)
+            soup = BeautifulSoup(response.text, "lxml")
+            all_product_section = soup.find("div", id="dp-container")
+            if all_product_section:
+                center_product_section = all_product_section.find("div", class_="centerColAlign")
+                right_product_section = all_product_section.find("div", id="rightCol")
+                left_product_section = all_product_section.find("div", id="leftCol")
+                name = await getAmazonProductTitleName(center_product_section)
+                price = await getAmazonProductPrice(center_product_section)
+                rating_star = await getAmazonProductRatingStar(center_product_section)
+                rating_count = await getAmazonProductRatingCount(center_product_section)
+                description = await getAmazonProductDescription(center_product_section)
+                exchange_offer = await getAmazonProductExchangeAmount(right_product_section)
+                image = left_product_section.find("ul",
+                                                  class_="a-unordered-list a-nostyle a-button-list a-vertical a-spacing-top-extra-large regularAltImageViewLayout")
+                images = [n.get('src') for li in image.findAll("span", class_="a-button-inner") for n in
+                          li.find_all('img') if n.get('src') is not None] if image else []
+                product = Product(name=name, description=description, ratingStar=rating_star,
+                                  ratingCount=rating_count, price=price, exchange=exchange_offer, image=images,
+                                  link=link)
+                products.append(product)
+                break
 
     return products
+
+@app.get("/v2/amazon/{search_query}")
+async def search_amazon_products(search_query: str, page: int = 1, page_size: int = 10):
+    products = []
+    links_list = []
+    updated_list= []
+    start_index = (page - 1) * page_size
+    url = f"https://www.amazon.in/s?k={search_query}&page={page}"
+    print(start_index)
+    while not links_list:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, "lxml")
+        links = soup.find_all("a", class_="a-link-normal s-no-outline")
+        links_list = [link.get("href") for link in links]
+
+    for link in links_list[start_index:start_index + page_size]:
+        updated_list.append(link)
+
+    for link in updated_list:
+        url = f"https://www.amazon.in{link}"
+        while True:
+            response = requests.get(url)
+            soup = BeautifulSoup(response.text, "lxml")
+            all_product_section = soup.find("div", id="dp-container")
+            if all_product_section:
+                center_product_section = all_product_section.find("div", class_="centerColAlign")
+                right_product_section = all_product_section.find("div", id="rightCol")
+                left_product_section = all_product_section.find("div", id="leftCol")
+                name = await getAmazonProductTitleName(center_product_section)
+                price = await getAmazonProductPrice(center_product_section)
+                rating_star = await getAmazonProductRatingStar(center_product_section)
+                rating_count = await getAmazonProductRatingCount(center_product_section)
+                description = await getAmazonProductDescription(center_product_section)
+                exchange_offer = await getAmazonProductExchangeAmount(right_product_section)
+                image = left_product_section.find("ul",
+                                                  class_="a-unordered-list a-nostyle a-button-list a-vertical a-spacing-top-extra-large regularAltImageViewLayout")
+                images = [n.get('src') for li in image.findAll("span", class_="a-button-inner") for n in
+                          li.find_all('img') if n.get('src') is not None] if image else []
+                product = Product(name=name, description=description, ratingStar=rating_star,
+                                  ratingCount=rating_count, price=price, exchange=exchange_offer, image=images,
+                                  link=link)
+                products.append(product)
+                break
+
+    return products
+
+
+
 
