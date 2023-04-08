@@ -1,3 +1,8 @@
+import aioredis
+from aioredis.exceptions import TimeoutError
+
+import asyncio
+
 import requests
 from fastapi import FastAPI
 
@@ -74,6 +79,7 @@ async def getAmazonProductPrice(product_section):
 
 from bs4 import BeautifulSoup
 
+
 @app.get("/v1/amazon/{search_query}")
 async def say_hello(search_query: str):
     products = []
@@ -113,11 +119,12 @@ async def say_hello(search_query: str):
 
     return products
 
+
 @app.get("/v2/amazon/{search_query}")
 async def search_amazon_products(search_query: str, page: int = 1, page_size: int = 10):
     products = []
     links_list = []
-    updated_list= []
+    updated_list = []
     start_index = (page - 1) * page_size
     url = f"https://www.amazon.in/s?k={search_query}&page={page}"
     print(start_index)
@@ -159,5 +166,47 @@ async def search_amazon_products(search_query: str, page: int = 1, page_size: in
     return products
 
 
+# async def update_redis_cache(redis_url, products):
+#     redis = await aioredis.create_redis_pool(redis_url)
+#     for product in products:
+#         await redis.hmset(product.link, {
+#             'name': product.name,
+#             'description': product.description,
+#             'ratingStar': product.ratingStar,
+#             'ratingCount': product.ratingCount,
+#             'price': product.price,
+#             'exchange': product.exchange,
+#             'image': ','.join(product.image),
+#         })
+#     redis.close()
+#     await redis.wait_closed()
+#
+# @app.post("/v2/amazon/{search_query}/update_cache")
+# async def update_amazon_cache(search_query: str, redis_url: str = "redis://default:LzwBDIEMPTPC3WSf29nOuER5itpalbsJ@redis-12457.c93.us-east-1-3.ec2.cloud.redislabs.com:12457"):
+#     products = await search_amazon_products(search_query)
+#     asyncio.create_task(update_redis_cache(redis_url, products))
+#     return {"message": "Cache update initiated in the background."}
+#
 
 
+async def update_redis_cache(redis_url, products):
+    async with aioredis.from_url(redis_url) as redis:
+        for product in products:
+            image_str = ','.join(product.image)
+            product_data = {
+                'name': product.name,
+                'description': product.description,
+                'ratingStar': product.ratingStar,
+                'ratingCount': product.ratingCount,
+                'price': product.price,
+                'exchange': product.exchange,
+                'image': image_str,
+            }
+            await redis.set(product.link, str(product_data))
+
+@app.post("/v2/amazon/{search_query}/update_cache")
+async def update_amazon_cache(search_query: str,
+                              redis_url: str = "redis://default:LzwBDIEMPTPC3WSf29nOuER5itpalbsJ@redis-12457.c93.us-east-1-3.ec2.cloud.redislabs.com:12457"):
+    products = await search_amazon_products(search_query)
+    asyncio.create_task(update_redis_cache(redis_url, products))
+    return {"message": "Cache update initiated in the background."}
