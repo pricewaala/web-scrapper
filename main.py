@@ -121,7 +121,7 @@ async def say_hello(search_query: str):
 
 
 @app.get("/v2/amazon/{search_query}")
-async def search_amazon_products(search_query: str, page: int = 1, page_size: int = 10):
+async def search_amazon_products(search_query: str, page: int = 1, page_size: int = 30):
     products = []
     links_list = []
     updated_list = []
